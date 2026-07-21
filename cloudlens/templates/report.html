@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lambda Lens: AI-Powered Lambda Debugger</title>
+    <title>CloudLens: AI-Powered CloudWatch Diagnostic Report</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -206,15 +206,15 @@
                         <circle cx="19" cy="8" r="2" fill="#06b6d4"/>
                         <path d="M7 20h14" stroke="#1e2d42" stroke-width="1" stroke-linecap="round"/>
                     </svg>
-                    <span class="text-base font-bold tracking-tight" style="color: var(--text-primary);">Lambda<span style="color: var(--accent-cyan);">Lens</span></span>
+                    <span class="text-base font-bold tracking-tight" style="color: var(--text-primary);">Cloud<span style="color: var(--accent-cyan);">Lens</span></span>
                 </div>
 
                 <div style="width:1px; height:20px; background: var(--border);"></div>
 
-                <!-- Function name -->
+                <!-- Log group -->
                 <div class="flex items-center gap-2">
-                    <span class="mono text-xs" style="color: var(--text-muted);">fn://</span>
-                    <span class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.function_name }}</span>
+                    <span class="mono text-xs" style="color: var(--text-muted);">log://</span>
+                    <span class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.log_group }}</span>
                 </div>
 
                 <!-- Region -->
@@ -224,8 +224,8 @@
             </div>
 
             <div class="flex items-center gap-3">
-                <!-- Runtime -->
-                <span class="mono text-xs" style="color: var(--text-muted);">{{ metadata.runtime }}</span>
+                <!-- Service type -->
+                <span class="mono text-xs uppercase" style="color: var(--text-muted);">{{ metadata.service }}</span>
 
                 <!-- Health badge -->
                 {% if data.overall_health == 'critical' %}
@@ -293,25 +293,25 @@
             </div>
         </div>
 
-        <!-- FUNCTION METADATA -->
+        <!-- LOG GROUP METADATA -->
         <div class="card p-5 mb-6 fade-in delay-1">
-            <p class="text-xs uppercase tracking-widest mb-4 font-semibold" style="color: var(--text-muted);">Function Configuration</p>
+            <p class="text-xs uppercase tracking-widest mb-4 font-semibold" style="color: var(--text-muted);">Log Group Info</p>
             <div class="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
                 <div>
-                    <div class="text-xs mb-1" style="color: var(--text-muted);">Memory</div>
-                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.memory }} MB</div>
+                    <div class="text-xs mb-1" style="color: var(--text-muted);">Service</div>
+                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.service or "generic" }}</div>
                 </div>
                 <div>
-                    <div class="text-xs mb-1" style="color: var(--text-muted);">Timeout</div>
-                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.timeout }}s</div>
+                    <div class="text-xs mb-1" style="color: var(--text-muted);">Time Window</div>
+                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.time_window or "1h" }}</div>
                 </div>
                 <div class="overflow-hidden">
-                    <div class="text-xs mb-1" style="color: var(--text-muted);">Handler</div>
-                    <div class="mono text-sm font-medium truncate" style="color: var(--text-primary);" title="{{ metadata.handler }}">{{ metadata.handler }}</div>
+                    <div class="text-xs mb-1" style="color: var(--text-muted);">Retention</div>
+                    <div class="mono text-sm font-medium truncate" style="color: var(--text-primary);">{{ metadata.retention_in_days or "n/a" }} days</div>
                 </div>
                 <div>
-                    <div class="text-xs mb-1" style="color: var(--text-muted);">Last Modified</div>
-                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.last_modified[:10] }}</div>
+                    <div class="text-xs mb-1" style="color: var(--text-muted);">Region</div>
+                    <div class="mono text-sm font-medium" style="color: var(--text-primary);">{{ metadata.region }}</div>
                 </div>
             </div>
         </div>
@@ -435,11 +435,11 @@
         <div class="flex items-center justify-between py-4 fade-in">
             <div class="flex items-center gap-2">
                 <span class="text-xs" style="color: var(--text-muted);">Powered by</span>
-                <span class="mono text-xs font-semibold" style="color: var(--accent-blue);">Amazon Nova 2 Lite</span>
+                <span class="mono text-xs font-semibold" style="color: var(--accent-blue);">Amazon Nova</span>
                 <span class="text-xs" style="color: var(--text-muted);">via Amazon Bedrock</span>
             </div>
             <div class="mono text-xs" style="color: var(--text-muted);">
-                LambdaLens · {{ metadata.region }}
+                CloudLens · {{ metadata.region }}
             </div>
         </div>
 

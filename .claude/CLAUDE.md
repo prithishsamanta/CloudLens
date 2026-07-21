@@ -40,7 +40,10 @@ cloudlens/
 ├── detector.py     # Service type auto-detection from log group name
 ├── prompts.py      # Prompt templates per service type
 ├── bedrock.py      # Bedrock API calls and response parsing
-└── reporter.py     # Terminal (Rich) and HTML output rendering
+├── reporter.py     # Terminal (Rich) rendering and web report wiring
+├── webserver.py    # Local FastAPI report server (generalized from LambdaLens v1's server/app.py)
+└── templates/
+    └── report.html # Jinja2 template for the web report
 pyproject.toml
 README.md
 ```
@@ -67,7 +70,7 @@ cloudlens diagnose --log-group /aws/apigateway/my-api --service apigateway
 | `--since` | No | — | Absolute start time for log fetch |
 | `--error-only` | No | False | Filter to ERROR, Exception, WARN, FATAL lines before sending to Bedrock |
 | `--service` | No | `auto` | Hint service type: `lambda`, `ecs`, `rds`, `apigateway`, `ec2`, `auto` |
-| `--output` | No | `terminal` | Output format: `terminal` or `html` |
+| `--output` | No | `terminal` | Output format: `terminal` or `web` |
 
 ---
 
@@ -82,7 +85,7 @@ cloudlens diagnose --log-group /aws/apigateway/my-api --service apigateway
 6. Select appropriate prompt template for the detected service type
 7. Send filtered logs + prompt to Amazon Bedrock Nova 2 Lite
 8. Parse LLM response into structured sections: errors found, root cause, fix recommendations
-9. Render to terminal (Rich, colored) or HTML report file
+9. Render to terminal (Rich, colored) or open the local web report (FastAPI + browser)
 ```
 
 ---
@@ -187,9 +190,9 @@ Use Rich panels, tables, and colored text. Structure:
   3. Add error handling to surface permission errors immediately
 ```
 
-### HTML Output
+### Web Output
 
-Generate a self-contained `.html` file with the same structure, styled with inline CSS. Filename: `cloudlens-report-{timestamp}.html`. No external dependencies — must open offline.
+Start a local FastAPI server (generalized from LambdaLens v1's `server/app.py`) and open the report automatically in the developer's browser at `http://localhost:8000/report`. Rendered via a Jinja2 template (`cloudlens/templates/report.html`, generalized from v1's `report.html`) with the same structure as the terminal output — header with log group/time window/severity, error cards, root cause, recommendations. This is a first-class output mode, not a fallback: the tool intentionally offers both a terminal report and a beautified local web report.
 
 ---
 
@@ -273,7 +276,6 @@ Designed the tool to run entirely within the developer's own AWS account using t
 
 ## What NOT To Do
 
-- Do not add a web UI — CLI and optional HTML export only
 - Do not add real-time log tailing — fetch and analyze, not stream
 - Do not add multi-region support in v2 — single region per invocation
 - Do not add log writing or mutations — read-only always

@@ -1,15 +1,18 @@
+import os
+import threading
+import webbrowser
+
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
-import webbrowser
-import threading
-import uvicorn
 
 # global variable
 diagnosis_data = {}
 report_metadata = {}
 
-templates = Jinja2Templates(directory="server/templates")
+_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 
 app = FastAPI()
 
@@ -30,8 +33,7 @@ def start_server(diagnosis: dict, metadata: dict):
 
 @app.get("/report")
 def get_report(request: Request):
-    return templates.TemplateResponse("report.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "report.html", {
         "data": diagnosis_data,
         "metadata": report_metadata
     })

@@ -1,172 +1,181 @@
+import re
+import time
+from datetime import datetime, timezone
+
 import boto3
-from datetime import datetime, timedelta
 from rich.console import Console
 
 console = Console()
 
-# create get lambda metadata which via boto3 which pulls the lambda metadata from the lambda function
-def get_lambda_metadata(function_name: str, region: str) -> dict:
-    """
-    Fetches Lambda function metadata like runtime, memory, timeout etc.
-    """
+_ERROR_FILTER = 'ERROR|Exception|WARN|FATAL'
+_LAST_PATTERN = re.compile(r"^(\d+)([mh])$")
 
+
+def parse_time_window(last: str = None, since: str = None) -> int:
+    """
+    Resolves a start time (epoch seconds) from either --last (relative, e.g.
+    15m/30m/1h/6h/24h) or --since (absolute, ISO 8601). --since takes
+    precedence if both are given.
+    """
+    if since:
+        dt = datetime.fromisoformat(since)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+
+    last = last or "1h"
+    match = _LAST_PATTERN.match(last)
+    if not match:
+        raise ValueError(f"Invalid --last value: {last!r} (expected e.g. 15m, 30m, 1h, 6h, 24h)")
+
+    amount, unit = int(match.group(1)), match.group(2)
+    seconds = amount * 60 if unit == "m" else amount * 3600
+    return int(time.time()) - seconds
+
+
+def describe_log_group(log_group: str, region: str) -> dict:
+    """
+    Fetches basic metadata about any CloudWatch log group.
+    """
     try:
-        console.print(f"[cyan]Fetching Lambda metadata for: {function_name}[/cyan]")
+        console.print(f"[cyan]Fetching log group metadata for: {log_group}[/cyan]")
 
-        lambda_client = boto3.client('lambda', region_name=region)
-        response = lambda_client.get_function_configuration(
-            FunctionName=function_name
-        )
+        logs_client = boto3.client("logs", region_name=region)
+        response = logs_client.describe_log_groups(logGroupNamePrefix=log_group)
 
+        matches = [g for g in response.get("logGroups", []) if g.get("logGroupName") == log_group]
+        if not matches:
+            console.print(f"[yellow]⚠ Log group not found: {log_group}[/yellow]")
+            return {"log_group": log_group, "region": region}
+
+        group = matches[0]
         metadata = {
-            "function_name": response.get("FunctionName"),
-            "runtime": response.get("Runtime"),
-            "memory": response.get("MemorySize"),
-            "timeout": response.get("Timeout"),
-            "last_modified": response.get("LastModified"),
-            "handler": response.get("Handler"),
-            "role": response.get("Role"),
-            "region": region
+            "log_group": log_group,
+            "region": region,
+            "stored_bytes": group.get("storedBytes"),
+            "retention_in_days": group.get("retentionInDays"),
+            "creation_time": group.get("creationTime"),
         }
-        
-        console.print(f"[green]✓ Lambda metadata fetched successfully[/green]")
+
+        console.print("[green]✓ Log group metadata fetched successfully[/green]")
         return metadata
 
     except Exception as e:
-        console.print(f"[red]✗ Failed to fetch Lambda metadata: {str(e)}[/red]")
-        return None
+        console.print(f"[red]✗ Failed to fetch log group metadata: {str(e)}[/red]")
+        return {"log_group": log_group, "region": region}
 
-# create get log streams which pulls the most recent log stream from cloud watch logs
-def get_log_streams(function_name: str, region: str, hours: int = 24) -> list:
-    """
-    Fetches the most recent CloudWatch log streams for a Lambda function.
-    """
 
+def query_log_events(
+    log_group: str,
+    region: str,
+    last: str = None,
+    since: str = None,
+    error_only: bool = False,
+    poll_interval: float = 1.0,
+    timeout_seconds: float = 60.0,
+) -> list:
+    """
+    Runs a CloudWatch Logs Insights query against the given log group for
+    the resolved time window, optionally filtering to error-shaped lines,
+    and returns the matching log events sorted by time.
+    """
     try:
-        console.print(f"[cyan]Fetching log streams for: {function_name}[/cyan]")
+        console.print(f"[cyan]Querying log events in {log_group}...[/cyan]")
 
-        logs_client = boto3.client('logs', region_name=region)
-        log_group_name = f"/aws/lambda/{function_name}"
-        
-        # Calculate start time
-        start_time = datetime.utcnow() - timedelta(hours=hours)
-        start_time_ms = int(start_time.timestamp() * 1000)
-        
-        response = logs_client.describe_log_streams(
-            logGroupName=log_group_name,
-            orderBy='LastEventTime',
-            descending=True,
-            limit=10  # Get 10 most recent streams
+        logs_client = boto3.client("logs", region_name=region)
+
+        start_time = parse_time_window(last, since)
+        end_time = int(time.time())
+
+        filter_clause = f"| filter @message like /{_ERROR_FILTER}/\n" if error_only else ""
+        query_string = (
+            "fields @timestamp, @message, @logStream\n"
+            f"{filter_clause}"
+            "| sort @timestamp asc\n"
+            "| limit 10000"
         )
-        
-        streams = response.get('logStreams', [])
-        
-        # Filter streams that have events within our time window
-        recent_streams = [
-            stream for stream in streams
-            if stream.get('lastEventTimestamp', 0) >= start_time_ms
-        ]
-        
-        console.print(f"[green]✓ Found {len(recent_streams)} log streams in the last {hours} hours[/green]")
-        return recent_streams
-    
+
+        start_response = logs_client.start_query(
+            logGroupName=log_group,
+            startTime=start_time,
+            endTime=end_time,
+            queryString=query_string,
+        )
+        query_id = start_response["queryId"]
+
+        elapsed = 0.0
+        results = []
+        while elapsed < timeout_seconds:
+            response = logs_client.get_query_results(queryId=query_id)
+            status = response.get("status")
+
+            if status == "Complete":
+                results = response.get("results", [])
+                break
+            elif status in ("Failed", "Cancelled", "Timeout"):
+                console.print(f"[red]✗ Logs Insights query {status.lower()}[/red]")
+                return []
+
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        events = []
+        for row in results:
+            fields = {f["field"]: f["value"] for f in row}
+            timestamp_str = fields.get("@timestamp", "")
+            timestamp_ms = 0
+            if timestamp_str:
+                dt = datetime.fromisoformat(timestamp_str.replace(" ", "T")).replace(tzinfo=timezone.utc)
+                timestamp_ms = int(dt.timestamp() * 1000)
+            events.append({
+                "timestamp": timestamp_ms,
+                "timestamp_readable": timestamp_str,
+                "message": fields.get("@message", ""),
+                "streamName": fields.get("@logStream", ""),
+            })
+
+        events.sort(key=lambda e: e["timestamp"])
+
+        console.print(f"[green]✓ Fetched {len(events)} log events successfully[/green]")
+        return events
+
     except Exception as e:
-        console.print(f"[red]✗ Failed to fetch log streams: {str(e)}[/red]")
-        return None
+        console.print(f"[red]✗ Failed to query log events: {str(e)}[/red]")
+        return []
 
-# create get log events pulls the actual log events from the log which got printed
-def get_log_events(function_name: str, region: str, hours: int = 24) -> list:
-    """
-    Fetches all log events from recent streams for a Lambda function.
-    """
-    try:
-        console.print(f"[cyan]Fetching log events...[/cyan]")
-        
-        logs_client = boto3.client('logs', region_name=region)
-        log_group_name = f"/aws/lambda/{function_name}"
-        
-        # First get the streams
-        streams = get_log_streams(function_name, region, hours)
-        
-        if not streams:
-            console.print(f"[yellow]⚠ No log streams found in the last {hours} hours[/yellow]")
-            return []
-        
-        all_events = []
-        
-        # Fetch events from each stream
-        for stream in streams:
-            stream_name = stream['logStreamName']
-            
-            try:
-                response = logs_client.get_log_events(
-                    logGroupName=log_group_name,
-                    logStreamName=stream_name,
-                    startFromHead=True
-                )
-                
-                events = response.get('events', [])
-                
-                # Add stream name to each event for context
-                for event in events:
-                    event['streamName'] = stream_name
-                    # Convert timestamp to readable format
-                    event['timestamp_readable'] = datetime.fromtimestamp(
-                        event['timestamp'] / 1000
-                    ).strftime('%Y-%m-%d %H:%M:%S')
-                
-                all_events.extend(events)
-                
-            except Exception as e:
-                console.print(f"[yellow]⚠ Could not fetch events from stream {stream_name}: {str(e)}[/yellow]")
-                continue
-        
-        # Sort all events by timestamp
-        all_events.sort(key=lambda x: x['timestamp'])
-        
-        console.print(f"[green]✓ Fetched {len(all_events)} log events successfully[/green]")
-        return all_events
-    
-    except Exception as e:
-        console.print(f"[red]✗ Failed to fetch log events: {str(e)}[/red]")
-        return None
 
-# create fetch all data which calls the above fuctions and will be accessed by the rest of the application
-def fetch_all_data(function_name: str, region: str, hours: int = 24) -> dict:
+def fetch_all_data(
+    log_group: str,
+    region: str,
+    last: str = None,
+    since: str = None,
+    error_only: bool = False,
+) -> dict:
     """
-    Master function that fetches all data needed for analysis.
-    Combines metadata + log streams + log events into one clean object.
+    Master function that fetches all data needed for analysis: log group
+    metadata + filtered log events, combined into one clean object.
     """
-    console.print(f"\n[bold cyan]Starting data fetch for Lambda: {function_name}[/bold cyan]\n")
-    
-    # Fetch everything
-    metadata = get_lambda_metadata(function_name, region)
-    streams = get_log_streams(function_name, region, hours)
-    events = get_log_events(function_name, region, hours)
+    console.print(f"\n[bold cyan]Starting data fetch for log group: {log_group}[/bold cyan]\n")
 
-    # Use safe defaults when API calls fail (e.g. invalid credentials)
-    streams = streams if streams is not None else []
-    events = events if events is not None else []
+    metadata = describe_log_group(log_group, region)
+    events = query_log_events(log_group, region, last=last, since=since, error_only=error_only)
 
-    # Format log events as clean text for Nova
     log_text = "\n".join([
         f"[{event['timestamp_readable']}] {event['message'].strip()}"
         for event in events
-        if event.get('message', '').strip()
+        if event.get("message", "").strip()
     ])
 
     result = {
         "metadata": metadata,
-        "streams": streams,
         "events": events,
         "log_text": log_text,
         "total_events": len(events),
-        "total_streams": len(streams),
-        "hours_analyzed": hours
+        "time_window": since or (last or "1h"),
+        "error_only": error_only,
     }
 
-    console.print(f"\n[bold green]✓ Data fetch complete![/bold green]")
-    console.print(f"[green]  → {len(streams)} streams analyzed[/green]")
+    console.print("\n[bold green]✓ Data fetch complete![/bold green]")
     console.print(f"[green]  → {len(events)} log events fetched[/green]\n")
-    
+
     return result
