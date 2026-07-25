@@ -14,6 +14,14 @@ MODEL_ID = "us.amazon.nova-2-lite-v1:0"
 
 MAX_LOG_CHARS = 60_000
 THROTTLE_RETRIES = 3
+DEFAULT_MAX_TOKENS = 4096
+MAX_TOKENS_CAP = 8192
+
+# Nova Lite's context window is ~300K tokens. The chat panel warns the user
+# well before that so they get a heads-up instead of a hard failure mid-reply.
+CHAT_MAX_TOKENS = 1024
+CHAT_CONTEXT_LIMIT = 300_000
+CHAT_WARN_THRESHOLD = int(CHAT_CONTEXT_LIMIT * 0.85)
 
 bedrock_client = boto3.client(
     service_name="bedrock-runtime",
@@ -81,24 +89,27 @@ def _extract_text(response: dict) -> str:
     return _sanitize_json_string(text)
 
 
-def _converse(prompt: str) -> dict:
+def _converse(prompt: str, max_tokens: int) -> dict:
     return bedrock_client.converse(
         modelId=MODEL_ID,
         messages=[{"role": "user", "content": [{"text": prompt}]}],
+        inferenceConfig={"maxTokens": max_tokens},
     )
 
 
 def analyze_logs(service: str, metadata: dict, log_text: str) -> dict:
     """
     Sends logs to Nova via Bedrock and returns structured diagnosis.
-    Retries on throttling and truncates the prompt once if it's too long.
+    Retries on throttling, truncates the prompt once if it's too long, and
+    raises maxTokens if Nova's response gets cut off mid-JSON.
     """
     prompt = build_prompt(service, metadata, log_text)
+    max_tokens = DEFAULT_MAX_TOKENS
 
     for attempt in range(THROTTLE_RETRIES):
         try:
             console.print("[cyan]Sending logs to Amazon Nova for analysis...[/cyan]")
-            response = _converse(prompt)
+            response = _converse(prompt, max_tokens)
 
             nova_response_text = _extract_text(response)
             diagnosis = json.loads(nova_response_text)
@@ -125,7 +136,105 @@ def analyze_logs(service: str, metadata: dict, log_text: str) -> dict:
             raise
 
         except json.JSONDecodeError as e:
+            if max_tokens < MAX_TOKENS_CAP and attempt < THROTTLE_RETRIES - 1:
+                max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+                console.print(
+                    f"[yellow]⚠ Nova response was cut off, retrying with maxTokens={max_tokens}...[/yellow]"
+                )
+                continue
+
             console.print(f"[red]✗ Failed to parse Nova response as JSON: {str(e)}[/red]")
             raise
 
     raise RuntimeError("Bedrock analysis failed after retries")
+
+
+def _build_chat_system_prompt(service: str, metadata: dict, log_text: str, diagnosis: dict) -> str:
+    return f"""
+    You are an AWS {service} debugging expert helping a developer understand a
+    diagnostic report CloudLens just generated for their CloudWatch logs.
+
+    Log Group: {metadata.get('log_group')}
+    Region: {metadata.get('region')}
+    Time Window: {metadata.get('time_window', 'unknown')}
+
+    Original CloudWatch Logs analyzed:
+    {log_text}
+
+    Diagnosis already generated for this report:
+    {json.dumps(diagnosis)}
+
+    Answer the developer's follow-up questions about this specific report only
+    — the errors found, the root causes, or how to implement the suggested
+    fixes. Give plain-text answers, no JSON, no markdown code fences. Keep
+    answers focused and practical. If asked about something unrelated to this
+    report, say so and redirect to the report's content.
+    """
+
+
+def chat_reply(
+    service: str,
+    metadata: dict,
+    log_text: str,
+    diagnosis: dict,
+    history: list,
+    user_message: str,
+) -> dict:
+    """
+    Sends a follow-up chat message to Nova, scoped strictly to the log data
+    and diagnosis from this report — no memory beyond what's passed in.
+    Returns {"reply": str, "context_tokens": int, "warning": str | None}.
+    """
+    system_prompt = _build_chat_system_prompt(service, metadata, log_text, diagnosis)
+
+    messages = [{"role": "user" if i % 2 == 0 else "assistant", "content": [{"text": m}]}
+                for i, m in enumerate(history)]
+    messages.append({"role": "user", "content": [{"text": user_message}]})
+
+    for attempt in range(THROTTLE_RETRIES):
+        try:
+            response = bedrock_client.converse(
+                modelId=MODEL_ID,
+                system=[{"text": system_prompt}],
+                messages=messages,
+                inferenceConfig={"maxTokens": CHAT_MAX_TOKENS},
+            )
+
+            reply_text = response["output"]["message"]["content"][0]["text"].strip()
+            usage = response.get("usage", {})
+            context_tokens = usage.get("inputTokens", 0) + usage.get("outputTokens", 0)
+
+            warning = None
+            if context_tokens >= CHAT_CONTEXT_LIMIT:
+                warning = (
+                    "This conversation has run out of room for the model to keep track of. "
+                    "Reload the report to start a fresh chat."
+                )
+            elif context_tokens >= CHAT_WARN_THRESHOLD:
+                warning = (
+                    "This conversation is getting long — the AI may start losing track of "
+                    "earlier context soon. Consider reloading the report to start fresh."
+                )
+
+            return {"reply": reply_text, "context_tokens": context_tokens, "warning": warning}
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+
+            if error_code == "ThrottlingException" and attempt < THROTTLE_RETRIES - 1:
+                time.sleep(2 ** attempt)
+                continue
+
+            if error_code == "ValidationException":
+                return {
+                    "reply": None,
+                    "context_tokens": CHAT_CONTEXT_LIMIT,
+                    "warning": (
+                        "This conversation has run out of room for the model to keep track of. "
+                        "Reload the report to start a fresh chat."
+                    ),
+                }
+
+            raise
+
+    raise RuntimeError("Chat reply failed after retries")

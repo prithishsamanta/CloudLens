@@ -3,6 +3,10 @@
 # webserver.py only need to handle one schema regardless of service type.
 
 _RESPONSE_CONTRACT = """
+Keep every field concise (1-3 sentences max, code snippets under 10 lines) so
+the full response stays well under 3000 tokens. Report at most 5 errors,
+picking the most significant ones if more are present.
+
 Return your response ONLY as a valid JSON object with this exact structure,
 no extra text, no markdown, no code blocks:
 {{

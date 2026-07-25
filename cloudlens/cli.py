@@ -33,10 +33,18 @@ def diagnose(log_group, last, since, error_only, service, region, output):
     data["metadata"]["service"] = resolved_service
     data["metadata"]["time_window"] = since or last
 
-    console.print(f"[cyan]Analyzing logs with Amazon Nova ({resolved_service})...[/cyan]")
-    diagnosis = analyze_logs(resolved_service, data["metadata"], data["log_text"])
+    if data["total_events"] == 0:
+        console.print("[yellow]⚠ No log events found in this time window — skipping analysis[/yellow]")
+        diagnosis = {
+            "summary": "No log events were found in the selected time window.",
+            "overall_health": "healthy",
+            "errors": [],
+        }
+    else:
+        console.print(f"[cyan]Analyzing logs with Amazon Nova ({resolved_service})...[/cyan]")
+        diagnosis = analyze_logs(resolved_service, data["metadata"], data["log_text"])
 
     if output == "web":
-        render_web(diagnosis, data["metadata"])
+        render_web(diagnosis, data["metadata"], data["log_text"], resolved_service)
     else:
         render_terminal(diagnosis, data["metadata"])

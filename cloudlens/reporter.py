@@ -56,11 +56,11 @@ def render_terminal(diagnosis: dict, metadata: dict) -> None:
         console.print()
 
 
-def render_web(diagnosis: dict, metadata: dict) -> None:
+def render_web(diagnosis: dict, metadata: dict, log_text: str = "", service: str = "generic") -> None:
     """
     Starts the local FastAPI web report and opens it in the browser.
     """
     from cloudlens.webserver import start_server
 
     console.print("[cyan]Opening report in browser...[/cyan]")
-    start_server(diagnosis, metadata)
+    start_server(diagnosis, metadata, log_text, service)

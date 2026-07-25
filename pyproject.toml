@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/prithishsamanta/Lambda_Lens"
+Homepage = "https://github.com/prithishsamanta/cloudlens"
 
 [project.scripts]
 cloudlens = "cloudlens.cli:main"

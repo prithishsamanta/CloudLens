@@ -4,39 +4,39 @@
 
 CloudLens is a CLI tool that queries any AWS CloudWatch log group — Lambda, ECS, EC2, API Gateway, RDS, or a custom log source — sends the filtered logs to **Amazon Nova** via Amazon Bedrock for analysis, and gives you a structured diagnostic report identifying error locations, root causes, and actionable fixes.
 
-Originally built as LambdaLens (Lambda-only) for the **Amazon Nova AI Hackathon**, generalized in v2 to work with any CloudWatch log group.
+Originally built as LambdaLens (Lambda-only), generalized in v2 to work with any CloudWatch log group.
 
 ---
 
 ## Demo
 
 ```
-$ cloudlens diagnose --log-group /aws/lambda/my-api-handler --last 1h
+$ cloudlens diagnose --log-group /ecs/my-service --last 1h
 
 CloudLens — AI-Powered CloudWatch Diagnostics
-Analyzing log group: /aws/lambda/my-api-handler in us-east-2
+Analyzing log group: /ecs/my-service in us-east-2
 
 Fetching CloudWatch logs and metadata...
 ✓ Log group metadata fetched successfully
 ✓ Fetched 142 log events successfully
 
-Analyzing logs with Amazon Nova (lambda)...
+Analyzing logs with Amazon Nova (ecs)...
 ✓ Analysis complete
 
 ╭─────────────────────────────────────────────╮
 │ CloudLens Diagnostic Report                 │
-│ Log Group: /aws/lambda/my-api-handler       │
-│ Service: lambda                             │
-│ Overall Health: DEGRADED                    │
+│ Log Group: /ecs/my-service                  │
+│ Service: ecs                                │
+│ Overall Health: CRITICAL                    │
 ╰─────────────────────────────────────────────╯
 
-🔴 AccessDeniedException
-  What happened: The function failed to read from S3.
-  Root cause: The execution role is missing s3:GetObject permission.
-  ✅ Fix: Add s3:GetObject to the Lambda execution role IAM policy.
+🔴 OutOfMemoryError
+  What happened: The container was killed due to running out of memory.
+  Root cause: The application exceeded the task's memory limit.
+  ✅ Fix: Increase the memoryReservation/memory values in the ECS task definition.
 ```
 
-By default, results print directly in the terminal. Pass `--output web` to get the same diagnosis rendered as a dark-themed dashboard at `http://localhost:8000/report`, opened automatically in your browser.
+By default, results print directly in the terminal. Pass `--output web` to get the same diagnosis rendered as a clean, minimalist dashboard at `http://localhost:8000/report`, opened automatically in your browser.
 
 ---
 
@@ -77,7 +77,7 @@ cloudlens/reporter.py
         ↓
 cloudlens/webserver.py + cloudlens/templates/report.html
   → FastAPI serves the report at localhost:8000
-  → Jinja2 renders the diagnosis into a dark-themed dashboard
+  → Jinja2 renders the diagnosis into a light, minimalist dashboard
   → Browser opens automatically
 ```
 
@@ -101,8 +101,8 @@ cloudlens/webserver.py + cloudlens/templates/report.html
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/prithishsamanta/Lambda_Lens.git
-cd Lambda_Lens
+git clone https://github.com/prithishsamanta/cloudlens.git
+cd cloudlens
 ```
 
 **2. Create and activate a virtual environment**
@@ -145,15 +145,12 @@ Provide:
 ### Basic usage
 
 ```bash
-cloudlens diagnose --log-group /aws/lambda/my-function
+cloudlens diagnose --log-group /ecs/my-service
 ```
 
 ### Examples
 
 ```bash
-# Analyze a Lambda function's logs from the last hour
-cloudlens diagnose --log-group /aws/lambda/my-api-handler --last 1h
-
 # Analyze an ECS service, only the last 30 minutes
 cloudlens diagnose --log-group /ecs/my-service --last 30m
 
@@ -164,10 +161,13 @@ cloudlens diagnose --log-group /aws/rds/my-db --error-only
 cloudlens diagnose --log-group /aws/apigateway/my-api --service apigateway
 
 # Open the beautified local web report instead of terminal output
-cloudlens diagnose --log-group /aws/lambda/my-api-handler --output web
+cloudlens diagnose --log-group /aws/ec2/my-instance --output web
 
 # Use an absolute start time instead of a relative window
-cloudlens diagnose --log-group /aws/lambda/my-api-handler --since 2026-07-01T00:00:00
+cloudlens diagnose --log-group /ecs/my-service --since 2026-07-01T00:00:00
+
+# Also works with Lambda function log groups
+cloudlens diagnose --log-group /aws/lambda/my-api-handler --last 1h
 ```
 
 ### Options
@@ -237,7 +237,7 @@ Detection targets are tuned per service type:
 ## Project Structure
 
 ```
-Lambda_Lens/                    # or your clone directory
+cloudlens/                      # or your clone directory
 ├── cloudlens/
 │   ├── __init__.py
 │   ├── cli.py                 # CLI entry point (cloudlens command)
@@ -298,7 +298,7 @@ This project is licensed under the MIT License, see the [LICENSE](LICENSE) file 
 
 **Prithish Samanta**
 
-Originally built as LambdaLens with Amazon Nova for the Amazon Nova AI Hackathon, generalized into CloudLens.
+Originally built as LambdaLens, generalized into CloudLens.
 
 ---
 
