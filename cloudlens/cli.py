@@ -2,6 +2,7 @@ import click
 from rich.console import Console
 
 from cloudlens.bedrock import analyze_logs
+from cloudlens.credentials import check_aws_credentials
 from cloudlens.detector import resolve_service
 from cloudlens.fetcher import fetch_all_data
 from cloudlens.reporter import render_terminal, render_web
@@ -26,6 +27,9 @@ def diagnose(log_group, last, since, error_only, service, region, output):
     console.print("\n[bold cyan]CloudLens — AI-Powered CloudWatch Diagnostics[/bold cyan]")
     console.print(f"[dim]Analyzing log group: {log_group} in {region}[/dim]\n")
 
+    if not check_aws_credentials(region):
+        raise SystemExit(1)
+
     console.print("[cyan]Fetching CloudWatch logs and metadata...[/cyan]")
     data = fetch_all_data(log_group, region, last=last, since=since, error_only=error_only)
 
@@ -34,7 +38,7 @@ def diagnose(log_group, last, since, error_only, service, region, output):
     data["metadata"]["time_window"] = since or last
 
     if data["total_events"] == 0:
-        console.print("[yellow]⚠ No log events found in this time window — skipping analysis[/yellow]")
+        console.print("[yellow]⚠ No log events found in this time window. Skipping analysis[/yellow]")
         diagnosis = {
             "summary": "No log events were found in the selected time window.",
             "overall_health": "healthy",

@@ -70,6 +70,8 @@ aws configure
 
 and provide your AWS Access Key ID, Secret Access Key, and a default region.
 
+If you skip this step, CloudLens checks for valid credentials before doing anything else. It prints clear setup instructions in the terminal instead of failing partway through.
+
 ### Using it later
 
 Your virtual environment only stays active for the current terminal session. Any time you open a new terminal and want to use CloudLens, activate it again first.
