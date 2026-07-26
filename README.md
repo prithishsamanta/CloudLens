@@ -2,9 +2,87 @@
 
 > Stop staring at CloudWatch logs. Let AI tell you exactly what went wrong and how to fix it.
 
-CloudLens is a CLI tool that queries any AWS CloudWatch log group — Lambda, ECS, EC2, API Gateway, RDS, or a custom log source — sends the filtered logs to **Amazon Nova** via Amazon Bedrock for analysis, and gives you a structured diagnostic report identifying error locations, root causes, and actionable fixes.
+CloudLens is a CLI tool that queries any AWS CloudWatch log group. This includes Lambda, ECS, EC2, API Gateway, RDS, or a custom log source. It sends the filtered logs to **Amazon Nova** via Amazon Bedrock for analysis and gives you a structured diagnostic report identifying error locations, root causes, and actionable fixes.
 
 Originally built as LambdaLens (Lambda-only), generalized in v2 to work with any CloudWatch log group.
+
+---
+
+## Quick Install
+
+CloudLens is published on PyPI. You need Python 3.10 or newer to use it. The steps are slightly different depending on your operating system, mostly because of how each system handles a fresh Python virtual environment.
+
+### macOS
+
+Check your Python version first.
+
+```bash
+python3 --version
+```
+
+If it says 3.10 or higher, you are set. If it is older, or you use Homebrew's Python, install into a dedicated virtual environment. This avoids the "externally managed environment" error that Homebrew's Python now shows when you try to install packages directly.
+
+```bash
+python3 -m venv ~/cloudlens-env
+source ~/cloudlens-env/bin/activate
+pip install cloudlens
+```
+
+### Windows
+
+Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/) if you do not already have it. During setup, check the box that says "Add Python to PATH."
+
+Open PowerShell or Command Prompt, then run:
+
+```powershell
+python -m venv cloudlens-env
+cloudlens-env\Scripts\activate
+pip install cloudlens
+```
+
+### Linux
+
+Most modern distributions (Ubuntu, Debian, Fedora) also block direct global installs, similar to macOS. Use a virtual environment the same way.
+
+```bash
+python3 -m venv ~/cloudlens-env
+source ~/cloudlens-env/bin/activate
+pip install cloudlens
+```
+
+### Confirm it installed correctly
+
+With your virtual environment still active, run:
+
+```bash
+cloudlens diagnose --help
+```
+
+You should see the list of available options. If you do, the install worked.
+
+### Configure your AWS credentials
+
+CloudLens uses your own AWS credentials to read CloudWatch Logs and call Amazon Bedrock. If you have not set this up yet, run:
+
+```bash
+aws configure
+```
+
+and provide your AWS Access Key ID, Secret Access Key, and a default region.
+
+### Using it later
+
+Your virtual environment only stays active for the current terminal session. Any time you open a new terminal and want to use CloudLens, activate it again first.
+
+```bash
+# macOS/Linux
+source ~/cloudlens-env/bin/activate
+
+# Windows
+cloudlens-env\Scripts\activate
+```
+
+Then run any `cloudlens diagnose` command as usual.
 
 ---
 
@@ -47,7 +125,7 @@ By default, results print directly in the terminal. Pass `--output web` to get t
 - **Powered by Amazon Nova via Bedrock**: advanced reasoning model identifies root causes, not just error names
 - **Two output modes**: a Rich terminal report by default, or a beautiful local web dashboard with `--output web`
 - **Context-aware prompts**: each service type gets a prompt tuned to its own failure patterns (cold starts and timeouts for Lambda, OOM kills for ECS, slow queries for RDS, etc.)
-- **Specific actionable fixes**: not generic advice, but exact steps tailored to your logs — corrected code, IAM policy JSON, or config changes
+- **Specific actionable fixes**: not generic advice, but exact steps tailored to your logs, such as corrected code, IAM policy JSON, or config changes
 - **Zero extra setup**: uses your existing AWS credentials, no API keys or logins needed
 - **Privacy first**: your logs never leave your AWS account except to Bedrock, which you already use
 
@@ -83,20 +161,20 @@ cloudlens/webserver.py + cloudlens/templates/report.html
 
 ---
 
-## Prerequisites
+## AWS Account Requirements
 
-- Python 3.10+
-- **AWS credentials configured**: CloudLens uses your AWS credentials to call CloudWatch Logs and Bedrock. Configure them via the AWS CLI:
-  ```bash
-  aws configure
-  ```
-  You'll need an AWS account with access to:
-  - Amazon CloudWatch Logs
-  - Amazon Bedrock (Nova model)
+Your AWS account needs access to these two services for CloudLens to work.
+
+- Amazon CloudWatch Logs
+- Amazon Bedrock (Nova model)
+
+See [Quick Install](#quick-install) above for how to install the tool itself and configure your credentials.
 
 ---
 
-## Installation
+## Development Setup
+
+The steps above install CloudLens as a regular package for using it. If you want to work on CloudLens itself, contribute a change, or run it directly from source, use this setup instead.
 
 **1. Clone the repository**
 
@@ -117,26 +195,21 @@ source venv/bin/activate
 venv\Scripts\activate
 ```
 
-**3. Install the package**
+**3. Install in editable mode**
 
 ```bash
 pip install -e .
 ```
 
-This installs all dependencies and registers the `cloudlens` command globally in your terminal.
+This installs all dependencies and registers the `cloudlens` command, but points it at your local source files, so any changes you make take effect immediately without reinstalling.
 
-**4. Configure AWS credentials (required for the tool to work)**
-
-CloudLens needs your AWS credentials to query CloudWatch Logs and to call Bedrock. If you haven't already:
+**4. Configure AWS credentials**
 
 ```bash
 aws configure
 ```
 
-Provide:
-- AWS Access Key ID
-- AWS Secret Access Key
-- Default region (e.g. `us-east-2`)
+Provide your AWS Access Key ID, Secret Access Key, and a default region (for example `us-east-2`).
 
 ---
 
@@ -174,9 +247,9 @@ cloudlens diagnose --log-group /aws/lambda/my-api-handler --last 1h
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--log-group` | CloudWatch log group to analyze (required) | — |
+| `--log-group` | CloudWatch log group to analyze (required) | None |
 | `--last` | Relative time window: `15m`, `30m`, `1h`, `6h`, `24h` | `1h` |
-| `--since` | Absolute start time (ISO 8601), overrides `--last` | — |
+| `--since` | Absolute start time (ISO 8601), overrides `--last` | None |
 | `--error-only` | Filter to ERROR, Exception, WARN, FATAL lines before sending to Bedrock | `False` |
 | `--service` | Service hint: `lambda`, `ecs`, `rds`, `apigateway`, `ec2`, `auto` | `auto` |
 | `--region` | AWS region | `us-east-2` |
@@ -200,7 +273,7 @@ Both the terminal and web report include:
 - Error type with severity badge (Critical / Warning / Info)
 - **What happened**: plain English explanation
 - **Root cause**: why it happened
-- **How to fix**: ready-to-use fixes — corrected code patterns, exact IAM policy JSON, or specific configuration changes depending on the error type
+- **How to fix**: ready-to-use fixes, such as corrected code patterns, exact IAM policy JSON, or specific configuration changes depending on the error type
 - **Relevant log lines**: the exact log lines that triggered the error
 
 ---
@@ -263,9 +336,9 @@ pip install -e ".[test]"
 pytest
 ```
 
-Runs the full unit test suite (`tests/`) with AWS and Bedrock calls mocked via `moto` and `unittest.mock` — no real credentials, no cost, no network calls.
+Runs the full unit test suite (`tests/`) with AWS and Bedrock calls mocked via `moto` and `unittest.mock`. There are no real credentials, no cost, and no network calls.
 
-The `manual/` directory has separate smoke-test scripts (`smoke_test_fetcher.py`, `smoke_test_analyzer.py`, `smoke_test_web.py`) that hit real AWS CloudWatch Logs and Amazon Bedrock. They're not run by `pytest`, need live AWS credentials and an existing log group, and calling Bedrock costs real money — run them directly with `python manual/smoke_test_fetcher.py` when you want to sanity-check against real infrastructure.
+The `manual/` directory has separate smoke-test scripts (`smoke_test_fetcher.py`, `smoke_test_analyzer.py`, `smoke_test_web.py`) that hit real AWS CloudWatch Logs and Amazon Bedrock. They're not run by `pytest`, need live AWS credentials and an existing log group, and calling Bedrock costs real money. Run them directly with `python manual/smoke_test_fetcher.py` when you want to sanity-check against real infrastructure.
 
 ---
 
@@ -274,7 +347,6 @@ The `manual/` directory has separate smoke-test scripts (`smoke_test_fetcher.py`
 - **Multi-log-group fleet analysis**: analyze every log group in your account at once and get a health dashboard ranked by severity.
 - **CI/CD integration**: run CloudLens in your deployment pipeline to catch issues before they reach users.
 - **IDE plugin**: bring the same debugging intelligence into VS Code so you never leave your editor.
-- **PyPI publish**: ship `pip install cloudlens` as a standalone install, no clone required.
 
 ---
 

@@ -458,13 +458,13 @@
                         this.messages.push({ role: 'assistant', text: data.reply, blocked: data.blocked });
                         this.warning = data.warning;
                     } catch (e) {
-                        this.messages.push({ role: 'assistant', text: 'Something went wrong reaching the chat — is the CloudLens server still running?', blocked: true });
+                        this.messages.push({ role: 'assistant', text: 'Something went wrong reaching the chat. Is the CloudLens server still running?', blocked: true });
                     }
                     this.sending = false;
                 }
              }">
             <p class="text-sm mb-4" style="color: var(--text-secondary);">
-                Ask follow-up questions about this report — what an error means, or how to implement a suggested fix.
+                Ask follow-up questions about this report. You can ask what an error means or how to implement a suggested fix.
                 This chat only knows about the logs and diagnosis on this page, nothing else. It stays alive while
                 you're actively using it, and resets automatically after 15 minutes of inactivity.
             </p>

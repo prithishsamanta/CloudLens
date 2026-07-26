@@ -1,10 +1,10 @@
-# CLAUDE.md — CloudLens Project Context
+# CLAUDE.md: CloudLens Project Context
 
 ## What This Project Is
 
 CloudLens is an AI-powered CLI diagnostic tool that queries any AWS CloudWatch log group, sends filtered logs to Amazon Bedrock for analysis, and generates a structured report identifying error locations, root causes, and actionable fixes.
 
-This is **v2** of a project previously called **LambdaLens**. LambdaLens v1 only supported AWS Lambda. CloudLens generalizes it to work with any CloudWatch log source — Lambda, ECS, EC2, API Gateway, RDS, or any custom log group.
+This is **v2** of a project previously called **LambdaLens**. LambdaLens v1 only supported AWS Lambda. CloudLens generalizes it to work with any CloudWatch log source. This includes Lambda, ECS, EC2, API Gateway, RDS, or any custom log group.
 
 The tool will be published to **PyPI** so anyone can install it with `pip install cloudlens`.
 
@@ -12,7 +12,7 @@ The tool will be published to **PyPI** so anyone can install it with `pip instal
 
 ## Current State
 
-LambdaLens v1 is already built and on GitHub. The existing README.md in the repo describes v1. Read it for context on the core flow — fetching logs via Boto3, sending to Bedrock, parsing output. CloudLens v2 refactors and extends that codebase.
+LambdaLens v1 is already built and on GitHub. The existing README.md in the repo describes v1. Read it for context on the core flow: fetching logs via Boto3, sending to Bedrock, and parsing output. CloudLens v2 refactors and extends that codebase.
 
 **Do not start from scratch. Refactor the existing v1 code.**
 
@@ -21,12 +21,12 @@ LambdaLens v1 is already built and on GitHub. The existing README.md in the repo
 ## Tech Stack
 
 - Python 3.10+
-- Boto3 — AWS SDK for CloudWatch Logs and Bedrock
-- Amazon Bedrock — Nova 2 Lite model for log analysis (model ID: `amazon.nova-lite-v1:0`)
-- CloudWatch Logs Insights — for fetching log events
-- Click — CLI argument parsing (preferred over argparse)
-- Rich — terminal output formatting (colored, structured)
-- pyproject.toml — packaging for PyPI
+- Boto3: AWS SDK for CloudWatch Logs and Bedrock
+- Amazon Bedrock: Nova 2 Lite model for log analysis (model ID: `amazon.nova-lite-v1:0`)
+- CloudWatch Logs Insights: for fetching log events
+- Click: CLI argument parsing (preferred over argparse)
+- Rich: terminal output formatting (colored, structured)
+- pyproject.toml: packaging for PyPI
 
 ---
 
@@ -65,9 +65,9 @@ cloudlens diagnose --log-group /aws/apigateway/my-api --service apigateway
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--log-group` | Yes | — | CloudWatch log group to analyze |
+| `--log-group` | Yes | None | CloudWatch log group to analyze |
 | `--last` | No | `1h` | Time window: `15m`, `30m`, `1h`, `6h`, `24h` |
-| `--since` | No | — | Absolute start time for log fetch |
+| `--since` | No | None | Absolute start time for log fetch |
 | `--error-only` | No | False | Filter to ERROR, Exception, WARN, FATAL lines before sending to Bedrock |
 | `--service` | No | `auto` | Hint service type: `lambda`, `ecs`, `rds`, `apigateway`, `ec2`, `auto` |
 | `--output` | No | `terminal` | Output format: `terminal` or `web` |
@@ -78,7 +78,7 @@ cloudlens diagnose --log-group /aws/apigateway/my-api --service apigateway
 
 ```
 1. Developer runs: cloudlens diagnose --log-group /aws/lambda/my-fn --last 1h
-2. Authenticate using developer's existing AWS credentials (boto3 default chain — no extra setup)
+2. Authenticate using developer's existing AWS credentials (boto3 default chain, no extra setup needed)
 3. Fetch log events from CloudWatch Logs for the specified time window
 4. If --error-only, filter lines containing: ERROR, Exception, WARN, FATAL
 5. Auto-detect service type from log group name pattern (or use --service hint)
@@ -126,10 +126,10 @@ Each service type gets its own prompt that tells Bedrock what to look for specif
 | **generic** | ERROR/WARN frequency, exception patterns, anomalous timing, repeated failure signatures |
 
 Prompts should request structured JSON output from Bedrock with these sections:
-- `errors_found` — list of specific errors with line references
-- `root_cause` — plain-English explanation of what went wrong
-- `recommendations` — numbered list of actionable fixes
-- `severity` — LOW / MEDIUM / HIGH / CRITICAL
+- `errors_found`: list of specific errors with line references
+- `root_cause`: plain-English explanation of what went wrong
+- `recommendations`: numbered list of actionable fixes
+- `severity`: LOW, MEDIUM, HIGH, or CRITICAL
 
 ---
 
@@ -156,9 +156,9 @@ output = response["output"]["message"]["content"][0]["text"]
 ```
 
 Always wrap in try/except for:
-- `ClientError` — IAM permission issues
-- `ValidationException` — prompt too long (truncate logs if needed)
-- `ThrottlingException` — retry with exponential backoff
+- `ClientError`: IAM permission issues
+- `ValidationException`: prompt too long, truncate logs if needed
+- `ThrottlingException`: retry with exponential backoff
 
 ---
 
@@ -192,7 +192,7 @@ Use Rich panels, tables, and colored text. Structure:
 
 ### Web Output
 
-Start a local FastAPI server (generalized from LambdaLens v1's `server/app.py`) and open the report automatically in the developer's browser at `http://localhost:8000/report`. Rendered via a Jinja2 template (`cloudlens/templates/report.html`, generalized from v1's `report.html`) with the same structure as the terminal output — header with log group/time window/severity, error cards, root cause, recommendations. This is a first-class output mode, not a fallback: the tool intentionally offers both a terminal report and a beautified local web report.
+Start a local FastAPI server (generalized from LambdaLens v1's `server/app.py`) and open the report automatically in the developer's browser at `http://localhost:8000/report`. Rendered via a Jinja2 template (`cloudlens/templates/report.html`, generalized from v1's `report.html`) with the same structure as the terminal output. This includes a header with log group, time window, and severity, plus error cards, root cause, and recommendations. This is a first-class output mode, not a fallback. The tool intentionally offers both a terminal report and a beautified local web report.
 
 ---
 
@@ -261,26 +261,26 @@ The developer's AWS credentials need:
 
 ---
 
-## Resume Bullets (Target — after PyPI publish)
+## Resume Bullets (Target, after PyPI publish)
 
 **Bullet 1:**
-Developed a CLI diagnostic tool — published to PyPI — that queries any AWS CloudWatch log group using the developer's own credentials, sends filtered logs to Amazon Bedrock for AI-powered analysis, and generates a structured report identifying error locations, root causes, and actionable fixes, reducing hours of manual log scanning to under 2 minutes.
+Developed a CLI diagnostic tool, published to PyPI, that queries any AWS CloudWatch log group using the developer's own credentials, sends filtered logs to Amazon Bedrock for AI-powered analysis, and generates a structured report identifying error locations, root causes, and actionable fixes. This reduces hours of manual log scanning to under 2 minutes.
 
 **Bullet 2:**
-Built context-aware prompt templates per AWS service type — Lambda, ECS, API Gateway, RDS — so the AI analysis targets failure patterns specific to each service rather than producing generic output, with parsing logic to handle variations in LLM response formatting and ensure every report is accurate and actionable.
+Built context-aware prompt templates per AWS service type, including Lambda, ECS, API Gateway, and RDS, so the AI analysis targets failure patterns specific to each service rather than producing generic output. This includes parsing logic to handle variations in LLM response formatting and ensure every report is accurate and actionable.
 
 **Bullet 3:**
-Designed the tool to run entirely within the developer's own AWS account using their existing credentials, so logs and function metadata never leave their environment — eliminating the security risk of piping production logs through a third-party service.
+Designed the tool to run entirely within the developer's own AWS account using their existing credentials, so logs and function metadata never leave their environment. This eliminates the security risk of piping production logs through a third-party service.
 
 ---
 
 ## What NOT To Do
 
-- Do not add real-time log tailing — fetch and analyze, not stream
-- Do not add multi-region support in v2 — single region per invocation
-- Do not add log writing or mutations — read-only always
+- Do not add real-time log tailing. Fetch and analyze, do not stream
+- Do not add multi-region support in v2. Use a single region per invocation
+- Do not add log writing or mutations. Keep it read-only always
 - Do not require any additional API keys or accounts beyond AWS credentials
-- Do not import the full log group without filtering — always apply the time window first to keep prompts manageable
+- Do not import the full log group without filtering. Always apply the time window first to keep prompts manageable
 
 ---
 
@@ -289,19 +289,19 @@ Designed the tool to run entirely within the developer's own AWS account using t
 Build modules in this order since each depends on the previous:
 
 ```
-1. detector.py    — no dependencies, pure string logic
-2. fetcher.py     — depends on boto3 and detector
-3. prompts.py     — no dependencies, pure string templates
-4. bedrock.py     — depends on boto3 and prompts
-5. reporter.py    — depends on Rich and parsed Bedrock output
-6. cli.py         — wires everything together via Click
+1. detector.py: no dependencies, pure string logic
+2. fetcher.py: depends on boto3 and detector
+3. prompts.py: no dependencies, pure string templates
+4. bedrock.py: depends on boto3 and prompts
+5. reporter.py: depends on Rich and parsed Bedrock output
+6. cli.py: wires everything together via Click
 ```
 
 ---
 
 ## Reference
 
-- Existing LambdaLens v1 code and README are in this repo — read them before building
+- Existing LambdaLens v1 code and README are in this repo. Read them before building
 - CloudWatch Logs Insights docs: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html
 - Bedrock Converse API docs: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
 - Rich docs: https://rich.readthedocs.io
