@@ -1,7 +1,9 @@
+# Manual smoke test — hits real AWS CloudWatch Logs and Amazon Bedrock.
+# Requires live AWS credentials and an existing log group; not run by
+# pytest/CI, and calling Bedrock costs real money.
 from cloudlens.bedrock import analyze_logs
 from cloudlens.detector import resolve_service
 from cloudlens.fetcher import fetch_all_data
-from cloudlens.reporter import render_web
 
 log_group = "/aws/lambda/nova-debugger-test"
 region = "us-east-2"
@@ -23,5 +25,3 @@ for error in result["errors"]:
     print(f"  What: {error['what_happened']}")
     print(f"  Why: {error['why_it_happened']}")
     print(f"  Fix: {error['fix']['explanation']}")
-
-render_web(result, data["metadata"])

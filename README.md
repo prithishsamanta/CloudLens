@@ -256,6 +256,19 @@ cloudlens/                      # or your clone directory
 
 ---
 
+## Testing
+
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+Runs the full unit test suite (`tests/`) with AWS and Bedrock calls mocked via `moto` and `unittest.mock` — no real credentials, no cost, no network calls.
+
+The `manual/` directory has separate smoke-test scripts (`smoke_test_fetcher.py`, `smoke_test_analyzer.py`, `smoke_test_web.py`) that hit real AWS CloudWatch Logs and Amazon Bedrock. They're not run by `pytest`, need live AWS credentials and an existing log group, and calling Bedrock costs real money — run them directly with `python manual/smoke_test_fetcher.py` when you want to sanity-check against real infrastructure.
+
+---
+
 ## What's Next
 
 - **Multi-log-group fleet analysis**: analyze every log group in your account at once and get a health dashboard ranked by severity.

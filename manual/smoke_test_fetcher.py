@@ -1,3 +1,5 @@
+# Manual smoke test — hits real AWS CloudWatch Logs. Requires live AWS
+# credentials and an existing log group; not run by pytest/CI.
 from cloudlens.fetcher import fetch_all_data
 
 # Replace with your actual log group and region
