@@ -17,12 +17,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "boto3",
-    "python-dotenv",
-    "rich",
-    "fastapi",
-    "uvicorn",
-    "jinja2",
+    "boto3>=1.42.0",
+    "python-dotenv>=1.2.0",
+    "rich>=14.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.0",
     "click",
 ]
 

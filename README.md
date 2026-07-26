@@ -249,8 +249,7 @@ cloudlens/                      # or your clone directory
 │   ├── webserver.py           # Local FastAPI report server
 │   └── templates/
 │       └── report.html        # Visual diagnostic report
-├── pyproject.toml             # Package configuration
-├── requirements.txt           # Dependencies
+├── pyproject.toml             # Package configuration and dependencies
 ├── .env                       # Environment variables (not committed)
 └── README.md
 ```
