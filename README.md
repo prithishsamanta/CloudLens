@@ -62,7 +62,13 @@ You should see the list of available options. If you do, the install worked.
 
 ### Configure your AWS credentials
 
-CloudLens uses your own AWS credentials to read CloudWatch Logs and call Amazon Bedrock. If you have not set this up yet, run:
+CloudLens uses your own AWS credentials to read CloudWatch Logs and call Amazon Bedrock. This is done through the separate AWS CLI tool, not through CloudLens itself, so you need to install that first if you have not already.
+
+- **macOS**: `brew install awscli`, or download the installer from [aws.amazon.com/cli](https://aws.amazon.com/cli/)
+- **Windows**: download the installer from [aws.amazon.com/cli](https://aws.amazon.com/cli/)
+- **Linux**: usually `sudo apt install awscli` or the equivalent for your distribution
+
+Once installed, run:
 
 ```bash
 aws configure
@@ -70,7 +76,16 @@ aws configure
 
 and provide your AWS Access Key ID, Secret Access Key, and a default region.
 
-If you skip this step, CloudLens checks for valid credentials before doing anything else. It prints clear setup instructions in the terminal instead of failing partway through.
+If you would rather not install the AWS CLI at all, you can set up credentials by hand instead. Create a file at `~/.aws/credentials` (macOS/Linux) or `C:\Users\<you>\.aws\credentials` (Windows) with this content:
+
+```
+[default]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+region = us-east-2
+```
+
+If you skip this step entirely, CloudLens checks for valid credentials before doing anything else. It prints clear setup instructions in the terminal instead of failing partway through.
 
 ### Using it later
 
