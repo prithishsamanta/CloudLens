@@ -82,8 +82,10 @@ If you would rather not install the AWS CLI at all, you can set up credentials b
 [default]
 aws_access_key_id = YOUR_ACCESS_KEY
 aws_secret_access_key = YOUR_SECRET_KEY
-region = us-east-2
+region = YOUR_REGION
 ```
+
+Replace all three values with your own. The region should be whichever AWS region your CloudWatch logs actually live in, for example `us-east-2`, `us-west-1`, or `eu-west-1`. If you are not sure, check the region shown in the top right corner of the AWS Console when you are looking at your logs.
 
 If you skip this step entirely, CloudLens checks for valid credentials before doing anything else. It prints clear setup instructions in the terminal instead of failing partway through.
 
