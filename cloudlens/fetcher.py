@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timezone
 
 import boto3
+from botocore.exceptions import ClientError, EndpointConnectionError, NoRegionError
 from rich.console import Console
 
 console = Console()
@@ -10,6 +11,16 @@ console = Console()
 _ERROR_FILTER = 'ERROR|Exception|WARN|FATAL'
 _ERROR_TERMS = ["ERROR", "Exception", "WARN", "FATAL"]
 _LAST_PATTERN = re.compile(r"^(\d+)([mh])$")
+
+
+class FetchError(Exception):
+    """
+    Raised when fetching from CloudWatch fails for a real reason, such as a
+    bad region or a permissions problem, as opposed to a query that ran
+    successfully and simply found no events. Keeping these separate means a
+    real failure can never get misreported as a clean "healthy" result.
+    """
+    pass
 
 
 def parse_time_window(last: str = None, since: str = None) -> int:
@@ -36,34 +47,36 @@ def parse_time_window(last: str = None, since: str = None) -> int:
 
 def describe_log_group(log_group: str, region: str) -> dict:
     """
-    Fetches basic metadata about any CloudWatch log group.
+    Fetches basic metadata about any CloudWatch log group. Raises FetchError
+    if CloudWatch itself couldn't be reached (bad region, no permissions,
+    no connectivity). A log group that genuinely doesn't exist is not an
+    error, that's reported via the "exists" key instead.
     """
-    try:
-        console.print(f"[cyan]Fetching log group metadata for: {log_group}[/cyan]")
+    console.print(f"[cyan]Fetching log group metadata for: {log_group}[/cyan]")
 
+    try:
         logs_client = boto3.client("logs", region_name=region)
         response = logs_client.describe_log_groups(logGroupNamePrefix=log_group)
+    except (ClientError, EndpointConnectionError, NoRegionError) as e:
+        raise FetchError(f"Could not reach CloudWatch Logs in region '{region}': {str(e)}") from e
 
-        matches = [g for g in response.get("logGroups", []) if g.get("logGroupName") == log_group]
-        if not matches:
-            console.print(f"[yellow]⚠ Log group not found: {log_group}[/yellow]")
-            return {"log_group": log_group, "region": region}
+    matches = [g for g in response.get("logGroups", []) if g.get("logGroupName") == log_group]
+    if not matches:
+        console.print(f"[yellow]⚠ Log group not found: {log_group}[/yellow]")
+        return {"log_group": log_group, "region": region, "exists": False}
 
-        group = matches[0]
-        metadata = {
-            "log_group": log_group,
-            "region": region,
-            "stored_bytes": group.get("storedBytes"),
-            "retention_in_days": group.get("retentionInDays"),
-            "creation_time": group.get("creationTime"),
-        }
+    group = matches[0]
+    metadata = {
+        "log_group": log_group,
+        "region": region,
+        "exists": True,
+        "stored_bytes": group.get("storedBytes"),
+        "retention_in_days": group.get("retentionInDays"),
+        "creation_time": group.get("creationTime"),
+    }
 
-        console.print("[green]✓ Log group metadata fetched successfully[/green]")
-        return metadata
-
-    except Exception as e:
-        console.print(f"[red]✗ Failed to fetch log group metadata: {str(e)}[/red]")
-        return {"log_group": log_group, "region": region}
+    console.print("[green]✓ Log group metadata fetched successfully[/green]")
+    return metadata
 
 
 def _insights_query(
@@ -190,13 +203,18 @@ def query_log_events(
     syntax, fast for high-volume log groups); if that comes back empty,
     falls back to FilterLogEvents in case Insights just hasn't indexed the
     data yet — which reliably happens on low-volume/freshly created groups.
+
+    Raises ValueError if --last/--since is malformed, and FetchError if
+    CloudWatch itself couldn't be reached. Both propagate uncaught, so a
+    real problem can never get silently reported as "0 events, healthy."
     """
-    logs_client = boto3.client("logs", region_name=region)
     start_time = parse_time_window(last, since)
     end_time = int(time.time())
 
+    console.print(f"[cyan]Querying log events in {log_group}...[/cyan]")
+
     try:
-        console.print(f"[cyan]Querying log events in {log_group}...[/cyan]")
+        logs_client = boto3.client("logs", region_name=region)
         events = _insights_query(
             logs_client, log_group, start_time, end_time, error_only, poll_interval, timeout_seconds
         )
@@ -205,14 +223,13 @@ def query_log_events(
             console.print("[yellow]⚠ No results from Logs Insights, falling back to raw log events...[/yellow]")
             events = _filter_log_events(logs_client, log_group, start_time, end_time, error_only)
 
-        events.sort(key=lambda e: e["timestamp"])
+    except (ClientError, EndpointConnectionError, NoRegionError) as e:
+        raise FetchError(f"Failed to query CloudWatch Logs: {str(e)}") from e
 
-        console.print(f"[green]✓ Fetched {len(events)} log events successfully[/green]")
-        return events
+    events.sort(key=lambda e: e["timestamp"])
 
-    except Exception as e:
-        console.print(f"[red]✗ Failed to query log events: {str(e)}[/red]")
-        return []
+    console.print(f"[green]✓ Fetched {len(events)} log events successfully[/green]")
+    return events
 
 
 def fetch_all_data(
@@ -224,7 +241,10 @@ def fetch_all_data(
 ) -> dict:
     """
     Master function that fetches all data needed for analysis: log group
-    metadata + filtered log events, combined into one clean object.
+    metadata + filtered log events, combined into one clean object. Lets
+    ValueError (bad --last/--since) and FetchError (CloudWatch unreachable)
+    propagate uncaught, so the caller can distinguish a real failure from a
+    genuinely empty result.
     """
     console.print(f"\n[bold cyan]Starting data fetch for log group: {log_group}[/bold cyan]\n")
 

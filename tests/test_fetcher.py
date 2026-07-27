@@ -4,9 +4,11 @@ from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from cloudlens.fetcher import (
+    FetchError,
     _filter_log_events,
     _insights_query,
     describe_log_group,
@@ -14,6 +16,10 @@ from cloudlens.fetcher import (
     parse_time_window,
     query_log_events,
 )
+
+
+def _client_error(code: str) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": "boom"}}, "DescribeLogGroups")
 
 
 # --- parse_time_window: pure logic, no AWS involved ---
@@ -58,10 +64,20 @@ def test_describe_log_group_found():
 
 
 @mock_aws
-def test_describe_log_group_not_found_returns_fallback():
+def test_describe_log_group_not_found_returns_exists_false():
     metadata = describe_log_group("/aws/lambda/does-not-exist", "us-east-2")
 
-    assert metadata == {"log_group": "/aws/lambda/does-not-exist", "region": "us-east-2"}
+    assert metadata == {"log_group": "/aws/lambda/does-not-exist", "region": "us-east-2", "exists": False}
+
+
+def test_describe_log_group_raises_fetch_error_on_client_error():
+    with patch("cloudlens.fetcher.boto3.client") as mock_boto_client:
+        mock_client = MagicMock()
+        mock_client.describe_log_groups.side_effect = _client_error("AccessDeniedException")
+        mock_boto_client.return_value = mock_client
+
+        with pytest.raises(FetchError):
+            describe_log_group("/aws/lambda/my-fn", "us-east-2")
 
 
 # --- _filter_log_events: moto-backed, exercises real pagination shape ---
@@ -120,12 +136,16 @@ def test_query_log_events_skips_fallback_when_insights_has_results():
     assert events == fake_events
 
 
-def test_query_log_events_returns_empty_on_client_error():
-    with patch("cloudlens.fetcher._insights_query", side_effect=Exception("boom")), \
+def test_query_log_events_raises_fetch_error_on_client_error():
+    with patch("cloudlens.fetcher._insights_query", side_effect=_client_error("AccessDeniedException")), \
          patch("cloudlens.fetcher.boto3.client"):
-        events = query_log_events("/aws/lambda/my-fn", "us-east-2", last="1h")
+        with pytest.raises(FetchError):
+            query_log_events("/aws/lambda/my-fn", "us-east-2", last="1h")
 
-    assert events == []
+
+def test_query_log_events_propagates_invalid_last_uncaught():
+    with pytest.raises(ValueError):
+        query_log_events("/aws/lambda/my-fn", "us-east-2", last="not-a-window")
 
 
 # --- error_only filter pattern construction ---

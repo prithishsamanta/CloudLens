@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 
 from cloudlens.credentials import check_aws_credentials
 
@@ -36,6 +36,19 @@ def test_check_aws_credentials_returns_false_when_rejected():
         mock_boto_client.return_value = mock_sts
 
         result = check_aws_credentials("us-east-2")
+
+    assert result is False
+
+
+def test_check_aws_credentials_returns_false_when_region_unreachable():
+    with patch("cloudlens.credentials.boto3.client") as mock_boto_client:
+        mock_sts = MagicMock()
+        mock_sts.get_caller_identity.side_effect = EndpointConnectionError(
+            endpoint_url="https://sts.us-fake-region-99.amazonaws.com/"
+        )
+        mock_boto_client.return_value = mock_sts
+
+        result = check_aws_credentials("us-fake-region-99")
 
     assert result is False
 

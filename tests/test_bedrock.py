@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from cloudlens import bedrock
 
@@ -130,10 +130,28 @@ def test_analyze_logs_gives_up_after_repeated_truncation():
 
 def test_analyze_logs_raises_non_retryable_client_error():
     with patch.object(bedrock, "bedrock_client") as mock_client:
-        mock_client.converse.side_effect = _client_error("AccessDeniedException")
+        mock_client.converse.side_effect = _client_error("InternalServerException")
 
         with pytest.raises(ClientError):
             bedrock.analyze_logs("lambda", {"log_group": "/aws/lambda/fn"}, "some logs")
+
+
+def test_analyze_logs_raises_bedrock_error_on_access_denied():
+    with patch.object(bedrock, "bedrock_client") as mock_client:
+        mock_client.converse.side_effect = _client_error("AccessDeniedException")
+
+        with pytest.raises(bedrock.BedrockError):
+            bedrock.analyze_logs("lambda", {"log_group": "/aws/lambda/fn"}, "some logs")
+
+
+def test_analyze_logs_raises_bedrock_error_on_connection_failure():
+    with patch.object(bedrock, "bedrock_client") as mock_client:
+        mock_client.converse.side_effect = EndpointConnectionError(
+            endpoint_url="https://bedrock-runtime.us-fake-region.amazonaws.com/"
+        )
+
+        with pytest.raises(bedrock.BedrockError):
+            bedrock.analyze_logs("lambda", {"log_group": "/aws/lambda/fn", "region": "us-fake-region"}, "some logs")
 
 
 # --- chat_reply ---

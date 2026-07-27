@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 import threading
 import time
 import webbrowser
@@ -9,8 +10,32 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from rich.console import Console
 
 from cloudlens.bedrock import chat_reply
+
+console = Console()
+
+REPORT_PORT = 8000
+
+
+class PortInUseError(Exception):
+    """Raised when the local report server's port is already occupied by
+    something else, so the CLI can say so clearly instead of the browser
+    tab silently failing to connect."""
+    pass
+
+
+def _check_port_available(port: int, host: str = "0.0.0.0"):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+    except OSError as e:
+        raise PortInUseError(
+            f"Port {port} is already in use by something else on this machine."
+        ) from e
+    finally:
+        sock.close()
 
 # global variable — this is a single-user local process, so plain module
 # state is enough; the chat has no memory beyond this one report/process.
@@ -44,13 +69,16 @@ def favicon():
 
 def start_server(diagnosis: dict, metadata: dict, log_text: str = "", service: str = "generic"):
     global diagnosis_data, report_metadata, report_log_text, report_service
+
+    _check_port_available(REPORT_PORT)
+
     diagnosis_data = diagnosis
     report_metadata = metadata
     report_log_text = log_text
     report_service = service
 
-    threading.Timer(1.5, lambda: webbrowser.open("http://localhost:8000/report")).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{REPORT_PORT}/report")).start()
+    uvicorn.run(app, host="0.0.0.0", port=REPORT_PORT)
 
 
 def _history_as_messages() -> list:

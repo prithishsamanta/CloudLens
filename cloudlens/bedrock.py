@@ -3,10 +3,19 @@ import os
 import time
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError, NoRegionError
 from rich.console import Console
 
 from cloudlens.prompts import build_prompt
+
+
+class BedrockError(Exception):
+    """
+    Raised when Amazon Bedrock itself can't be reached or used, such as a
+    network failure or the account not having access to the model yet, as
+    opposed to a response that came back but was malformed or throttled.
+    """
+    pass
 
 # LambdaLens v1 used this exact model ID successfully via invoke_model; kept
 # as-is for the converse API since it's the proven-working ID for this account.
@@ -117,6 +126,11 @@ def analyze_logs(service: str, metadata: dict, log_text: str) -> dict:
             console.print("[green]✓ Analysis complete[/green]")
             return diagnosis
 
+        except (EndpointConnectionError, NoRegionError) as e:
+            raise BedrockError(
+                f"Could not reach Amazon Bedrock in region '{metadata.get('region')}'."
+            ) from e
+
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
 
@@ -131,6 +145,11 @@ def analyze_logs(service: str, metadata: dict, log_text: str) -> dict:
                 log_text = log_text[-MAX_LOG_CHARS:]
                 prompt = build_prompt(service, metadata, log_text)
                 continue
+
+            if error_code == "AccessDeniedException":
+                raise BedrockError(
+                    "AWS rejected the request to Amazon Bedrock (AccessDeniedException)."
+                ) from e
 
             console.print(f"[red]✗ Bedrock call failed ({error_code}): {str(e)}[/red]")
             raise
